@@ -3,7 +3,6 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 from datetime import datetime
-from pathlib import Path
 
 
 # Set page config
@@ -17,8 +16,18 @@ st.set_page_config(
 st.title("📊 Sales EDA")
 st.markdown("Exploratory Data Analysis of FCPS meal sales data.")
 
-df = pd.read_csv("data/sales.csv")  # Simple relative path
+# Use raw GitHub URL
+DATA_URL = "https://github.com/Akamemz/FSPS-Schools/blob/main/Fairfax_County/data/preprocessed-data/sales.csv"
 
+@st.cache_data
+def load_data():
+    try:
+        return pd.read_csv(DATA_URL)
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        st.stop()
+
+df = load_data()
 # Convert date to datetime
 df['date'] = pd.to_datetime(df['date'])
 
