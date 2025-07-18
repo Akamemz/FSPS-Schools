@@ -22,12 +22,18 @@ DATA_URL = "https://github.com/Akamemz/FSPS-Schools/blob/main/Fairfax_County/dat
 @st.cache_data
 def load_data():
     try:
-        return pd.read_csv(DATA_URL)
+        # Try with more flexible parsing
+        return pd.read_csv(DATA_URL,
+                         engine='python',  # More flexible parser
+                         on_bad_lines='warn',  # Skip bad lines instead of failing
+                         quoting=csv.QUOTE_MINIMAL)
     except Exception as e:
         st.error(f"Failed to load data: {e}")
         st.stop()
 
 df = load_data()
+
+
 # Convert date to datetime
 df['date'] = pd.to_datetime(df['date'])
 
