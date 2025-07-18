@@ -17,15 +17,7 @@ st.set_page_config(
 st.title("📊 Sales EDA")
 st.markdown("Exploratory Data Analysis of FCPS meal sales data.")
 
-# Get the absolute path to the data file
-current_dir = Path(__file__).parent
-data_path = current_dir.parent / "data" / "preprocessed-data" / "sales.csv"
-
-try:
-    df = pd.read_csv(data_path)
-except Exception as e:
-    st.error(f"Failed to load data file: {e}")
-    st.stop()
+df = pd.read_csv("data/sales.csv")  # Simple relative path
 
 # Convert date to datetime
 df['date'] = pd.to_datetime(df['date'])
