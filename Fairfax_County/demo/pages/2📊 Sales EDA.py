@@ -17,7 +17,10 @@ st.set_page_config(
 st.title("📊 Sales EDA")
 st.markdown("Exploratory Data Analysis of FCPS meal sales data.")
 
-df = pd.read_csv('data/preprocessed-data/sales.csv')
+from pathlib import Path
+
+DATA_PATH = Path(__file__).resolve().parents[1] / 'data' / 'preprocessed-data' / 'sales.csv'
+df = pd.read_csv(DATA_PATH)
 
 # Convert date to datetime
 df['date'] = pd.to_datetime(df['date'])
