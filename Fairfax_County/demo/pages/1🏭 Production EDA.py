@@ -547,17 +547,17 @@ elif selected_viz == "Top Schools by Food Waste Cost":
         filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
+    waste_sum = filtered_df.groupby(['School Name'])['Total_Waste_Cost'].sum()
+
+    if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()):
+        st.warning("No valid waste cost data found for the selected menu items. Please select more items.")
+        st.stop()
+
     with st.sidebar:
         st.subheader("Display Options")
 
-        if filtered_df.empty or filtered_df['Total_Waste_Cost'].dropna().empty:
-            st.warning("No data found for the selected menu items and school. Please try choosing more items.")
-            st.stop()
-
-        waste_min = float(filtered_df['Total_Waste_Cost'].min())
-        waste_max = float(
-            filtered_df.groupby(['School Name'])['Total_Waste_Cost'].sum().max()
-        )
+        waste_min = 0.0
+        waste_max = float(waste_sum.max())
 
         waste_range = st.slider(
             "Filter by Total Waste Cost ($)",
