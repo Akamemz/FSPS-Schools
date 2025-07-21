@@ -547,17 +547,18 @@ elif selected_viz == "Top Schools by Food Waste Cost":
         filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
+    # Precompute waste sum by school
     waste_sum = filtered_df.groupby(['School Name'])['Total_Waste_Cost'].sum()
 
-    if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()):
-        st.warning("No valid waste cost data found for the selected menu items. Please select more items.")
+    # Validate waste_sum BEFORE calling slider
+    if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()) or waste_sum.max() == 0:
+        st.warning("No valid waste cost data found for the selected menu items or school. Please choose more items.")
         st.stop()
+
+    waste_max = float(waste_sum.max())
 
     with st.sidebar:
         st.subheader("Display Options")
-
-        waste_min = 0.0
-        waste_max = float(waste_sum.max())
 
         waste_range = st.slider(
             "Filter by Total Waste Cost ($)",
