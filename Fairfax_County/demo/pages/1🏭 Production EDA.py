@@ -141,6 +141,7 @@ date_range = st.sidebar.date_input(
 # Main content area
 st.header(selected_viz)  # Dynamic title based on selection
 
+
 # Apply filters to data
 def apply_filters(df, school, date_range, items):
     filtered = df.copy()
@@ -161,7 +162,15 @@ def apply_filters(df, school, date_range, items):
     return filtered
 
 
-filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+def safe_filtered_df(df, school, date_range, items):
+    filtered = apply_filters(df, school, date_range, items)
+    if filtered.empty:
+        st.warning("No data found for the selected menu items and school. Please try choosing more items.")
+        st.stop()
+    return filtered
+
+
+filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
 # ---------------------------------------------------------------------------------------------------------
 
@@ -188,7 +197,8 @@ if selected_viz == "Total Cost by School":
         summary_df = apply_filters(df, selected_school, date_range, menu_items)
         summary_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
-    school_summary = summary_df.groupby(['School Name', 'Meal'], observed=True)['Production_Cost_Total'].sum().reset_index()
+    school_summary = summary_df.groupby(['School Name', 'Meal'], observed=True)[
+        'Production_Cost_Total'].sum().reset_index()
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -234,7 +244,8 @@ if selected_viz == "Total Cost by School":
     )
 
     # Filter by range
-    display_df = school_summary.groupby(['School Name', 'Meal'], observed=True)['Production_Cost_Total'].sum().reset_index()
+    display_df = school_summary.groupby(['School Name', 'Meal'], observed=True)[
+        'Production_Cost_Total'].sum().reset_index()
 
     total_costs = display_df.groupby('School Name')['Production_Cost_Total'].sum()
     top_schools = total_costs.sort_values(ascending=False)
@@ -416,7 +427,7 @@ elif selected_viz == "Cost Distribution: Schools and Menu Items":
         viz_df = viz_df[
             (viz_df['Date'] >= pd.to_datetime(start_date)) &
             (viz_df['Date'] <= pd.to_datetime(end_date))
-        ]
+            ]
 
     if 'All Schools' not in selected_schools:
         if 'Top 10 Schools' in selected_schools:
@@ -430,7 +441,7 @@ elif selected_viz == "Cost Distribution: Schools and Menu Items":
     viz_df = viz_df[
         (viz_df['Production_Cost_Total'] >= cost_per_serving[0]) &
         (viz_df['Production_Cost_Total'] <= cost_per_serving[1])
-    ]
+        ]
 
     # 4. CREATE VISUALIZATION
     if not viz_df.empty:
@@ -461,8 +472,8 @@ elif selected_viz == "Cost Distribution: Schools and Menu Items":
             color_continuous_scale='Viridis',
             hover_data=['servings'],
             title=f"Cost Distribution by School and Menu Item<br>" +
-                 f"<sup>Cost/Serving: ${cost_per_serving[0]:.2f}-${cost_per_serving[1]:.2f} | " +
-                 f"{len(selected_schools)} {'school' if len(selected_schools)==1 else 'schools'} selected</sup>"
+                  f"<sup>Cost/Serving: ${cost_per_serving[0]:.2f}-${cost_per_serving[1]:.2f} | " +
+                  f"{len(selected_schools)} {'school' if len(selected_schools) == 1 else 'schools'} selected</sup>"
         )
 
         fig.update_layout(
@@ -510,7 +521,7 @@ elif selected_viz == "Cost Distribution: Schools and Menu Items":
         """)
 
 # ---------------------------------------------------------------------------------------------------------
-    
+
 elif selected_viz == "Top Schools by Food Waste Cost":
     # st.header("\U0001F5D1\ufe0f Top Schools by Food Waste Cost")
 
@@ -531,9 +542,9 @@ elif selected_viz == "Top Schools by Food Waste Cost":
         df_breakfast["Meal"] = "Breakfast"
         df_lunch["Meal"] = "Lunch"
         combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
-        filtered_df = apply_filters(combined_df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(combined_df, selected_school, date_range, menu_items)
     else:
-        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
     with st.sidebar:
@@ -571,7 +582,7 @@ elif selected_viz == "Top Schools by Food Waste Cost":
     waste_by_school = waste_by_school[
         (waste_by_school['Total_Waste_Cost'] >= waste_range[0]) &
         (waste_by_school['Total_Waste_Cost'] <= waste_range[1])
-    ]
+        ]
 
     # Determine top N schools overall (summing across meals)
     top_schools = (
@@ -666,9 +677,9 @@ elif selected_viz == "Top Wasted Menu Items":
         df_breakfast["Meal"] = "Breakfast"
         df_lunch["Meal"] = "Lunch"
         combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
-        filtered_df = apply_filters(combined_df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(combined_df, selected_school, date_range, menu_items)
     else:
-        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
     if filtered_df.empty:
@@ -704,7 +715,7 @@ elif selected_viz == "Top Wasted Menu Items":
 
     # Now safe to use filtered_df and define grouped
     # 1. Apply global filters
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
     # 2. Inject 'Meal' column for grouping
     filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
@@ -801,7 +812,7 @@ elif selected_viz == "Cost Deviation by School":
     # st.header("💰 Cost Deviation by School")
 
     # Apply global filters first
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
     if filtered_df.empty:
         st.warning("No records found for the selected school, menu items, or date range.")
@@ -838,7 +849,7 @@ elif selected_viz == "Cost Deviation by School":
     valid_schools = school_deviation[
         (school_deviation >= deviation_range[0]) &
         (school_deviation <= deviation_range[1])
-    ]
+        ]
 
     if valid_schools.empty:
         st.warning("No schools fall within the selected deviation range.")
@@ -923,7 +934,7 @@ elif selected_viz == "Popularity vs. Waste by Menu Item":
     # st.header("📊 Popularity vs. Waste by Menu Item")
 
     # Apply global filters
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
     if filtered_df.empty:
         st.warning("No records found for the selected filters.")
@@ -973,7 +984,7 @@ elif selected_viz == "Popularity vs. Waste by Menu Item":
         (item_stats['Served_Total'] <= served_range[1]) &
         (item_stats['Total_Waste_Cost'] >= waste_range[0]) &
         (item_stats['Total_Waste_Cost'] <= waste_range[1])
-    ]
+        ]
 
     if item_stats.empty:
         st.warning("No menu items match the selected ranges.")
@@ -1058,9 +1069,9 @@ elif selected_viz == "Average Food Waste by Day of Week":
         df_breakfast['Meal'] = 'Breakfast'
         df_lunch['Meal'] = 'Lunch'
         combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
-        filtered_df = apply_filters(combined_df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(combined_df, selected_school, date_range, menu_items)
     else:
-        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df['Meal'] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
     if filtered_df.empty:
@@ -1166,9 +1177,9 @@ elif selected_viz == "Cost per Student by Region":
         df_breakfast["Meal"] = "Breakfast"
         df_lunch["Meal"] = "Lunch"
         combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
-        filtered_df = apply_filters(combined_df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(combined_df, selected_school, date_range, menu_items)
     else:
-        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+        filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
         filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
     if "FCPS Region" not in filtered_df.columns:
@@ -1199,9 +1210,11 @@ elif selected_viz == "Cost per Student by Region":
     max_row = region_cost.loc[region_cost['Cost_Per_Student'].idxmax()]
     min_row = region_cost.loc[region_cost['Cost_Per_Student'].idxmin()]
     with col3:
-        st.metric("Highest Region", f"{max_row['FCPS Region']} ({max_row['Meal']})", delta=f"${max_row['Cost_Per_Student']:,.2f}")
+        st.metric("Highest Region", f"{max_row['FCPS Region']} ({max_row['Meal']})",
+                  delta=f"${max_row['Cost_Per_Student']:,.2f}")
     with col4:
-        st.metric("Lowest Region", f"{min_row['FCPS Region']} ({min_row['Meal']})", delta=f"${min_row['Cost_Per_Student']:,.2f}")
+        st.metric("Lowest Region", f"{min_row['FCPS Region']} ({min_row['Meal']})",
+                  delta=f"${min_row['Cost_Per_Student']:,.2f}")
 
     # Plot
     fig = px.bar(
@@ -1251,7 +1264,7 @@ elif selected_viz == "Geographic Distribution of Costs and Waste":
     # st.header("🗺️ Geographic Distribution of Costs and Waste")
 
     # Apply global filters
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
     required_columns = {'latitude', 'longitude', 'School Name', 'Production_Cost_Total', 'Total_Waste_Cost'}
     if not required_columns.issubset(filtered_df.columns):
@@ -1368,7 +1381,7 @@ elif selected_viz == "Interactive School Map with Layers":
     # st.header("🗺️ Interactive School Map with Layers")
 
     # Apply global filters
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
 
     if 'latitude' not in filtered_df.columns or 'longitude' not in filtered_df.columns:
         st.warning("Latitude/Longitude columns not found in data.")
@@ -1476,7 +1489,8 @@ elif selected_viz == "Interactive School Map with Layers":
         fig.add_trace(go.Scattermap(
             lon=school_geo['longitude'],
             lat=school_geo['latitude'],
-            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Cost: ${row['Production_Cost_Total']:,.2f}", axis=1),
+            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Cost: ${row['Production_Cost_Total']:,.2f}",
+                                  axis=1),
             marker=dict(
                 size=school_geo['Production_Cost_Total'] / 100,
                 color=school_geo['Production_Cost_Total'],
@@ -1492,7 +1506,8 @@ elif selected_viz == "Interactive School Map with Layers":
         fig.add_trace(go.Scattermap(
             lon=school_geo['longitude'],
             lat=school_geo['latitude'],
-            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Waste: ${row['Total_Waste_Cost']:,.2f}", axis=1),
+            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Waste: ${row['Total_Waste_Cost']:,.2f}",
+                                  axis=1),
             marker=dict(
                 size=school_geo['Total_Waste_Cost'] / 50,
                 color=school_geo['Total_Waste_Cost'],
@@ -1522,7 +1537,6 @@ elif selected_viz == "Interactive School Map with Layers":
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
 
     st.text(" ")
     st.text(" ")
@@ -1562,7 +1576,7 @@ elif selected_viz == "Enhanced School Region Map":
         st.stop()
 
     # Group and aggregate school data
-    filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
     school_stats = filtered_df.groupby(['School Name']).agg({
         'latitude': 'first',
         'longitude': 'first',
@@ -1574,6 +1588,7 @@ elif selected_viz == "Enhanced School Region Map":
     map_center = [df['latitude'].mean(), df['longitude'].mean()]
     m = folium.Map(location=map_center, zoom_start=11, tiles="cartodbpositron")
 
+
     # --- Color utilities ---
     def get_random_color():
         return "#{:02x}{:02x}{:02x}".format(
@@ -1581,6 +1596,7 @@ elif selected_viz == "Enhanced School Region Map":
             random.randint(100, 255),
             random.randint(100, 255)
         )
+
 
     region_colors = {
         feature['properties']['REGION']: get_random_color()
