@@ -550,6 +550,10 @@ elif selected_viz == "Top Schools by Food Waste Cost":
     with st.sidebar:
         st.subheader("Display Options")
 
+        if filtered_df.empty or filtered_df['Total_Waste_Cost'].dropna().empty:
+            st.warning("No data found for the selected menu items and school. Please try choosing more items.")
+            st.stop()
+
         waste_min = float(filtered_df['Total_Waste_Cost'].min())
         waste_max = float(
             filtered_df.groupby(['School Name'])['Total_Waste_Cost'].sum().max()
