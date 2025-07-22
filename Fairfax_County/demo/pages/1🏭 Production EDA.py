@@ -1241,7 +1241,7 @@ elif selected_viz == "Cost per Student by Region":
 
         # Add validation check for meaningful data
         if (region_cost["Cost_Per_Student"] == 0).all():
-            st.warning("No valid cost-per-student data found. Please check your filters.")
+            st.warning("No valid data found for the selected menu items. Please select different or more items.")
             st.stop()
 
     except Exception as e:
