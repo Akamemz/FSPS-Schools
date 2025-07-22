@@ -944,98 +944,122 @@ elif selected_viz == "Cost Deviation by School":
 # ---------------------------------------------------------------------------------------------------------
 
 elif selected_viz == "Popularity vs. Waste by Menu Item":
-    # st.header("📊 Popularity vs. Waste by Menu Item")
+    # Apply global filters with safeguards
+    try:
+        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
 
-    # Apply global filters
-    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
+        if filtered_df.empty:
+            st.warning("No records found for the selected filters.")
+            st.stop()
 
-    if filtered_df.empty:
-        st.warning("No records found for the selected filters.")
+        # Aggregate stats by menu item
+        item_stats = filtered_df.groupby('Name').agg({
+            'Served_Total': 'sum',
+            'Total_Waste_Cost': 'sum'
+        }).reset_index()
+
+        # Add the exact validation check you requested
+        waste_sum = item_stats['Total_Waste_Cost']
+        if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()) or waste_sum.max() == 0:
+            st.warning(
+                "No valid waste cost data found for the selected menu items or school. Please choose different or more items.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Data processing error: {str(e)}")
         st.stop()
 
-    # Aggregate stats by menu item
-    item_stats = filtered_df.groupby('Name').agg({
-        'Served_Total': 'sum',
-        'Total_Waste_Cost': 'sum'
-    }).reset_index()
-
-    # Sidebar filters
+    # Sidebar filters with additional safeguards
     with st.sidebar:
         st.subheader("Item Filters")
 
-        max_served = int(item_stats['Served_Total'].max())
-        max_waste = float(item_stats['Total_Waste_Cost'].max())
+        try:
+            max_served = int(item_stats['Served_Total'].max())
+            max_waste = float(item_stats['Total_Waste_Cost'].max())
 
-        served_range = st.slider(
-            "Servings Range",
-            min_value=0,
-            max_value=max_served,
-            value=(0, max_served),
-            step=10,
-            key="served_range"
-        )
+            served_range = st.slider(
+                "Servings Range",
+                min_value=0,
+                max_value=max_served,
+                value=(0, max_served),
+                step=max(1, max_served // 100),  # Dynamic step size
+                key="served_range"
+            )
 
-        waste_range = st.slider(
-            "Waste Cost Range ($)",
-            min_value=0.0,
-            max_value=round(max_waste + 1, 2),
-            value=(0.0, round(max_waste + 1, 2)),
-            step=10.0,
-            key="waste_range"
-        )
+            waste_range = st.slider(
+                "Waste Cost Range ($)",
+                min_value=0.0,
+                max_value=max(0.1, max_waste),  # Ensure at least 0.1 range
+                value=(0.0, max(0.1, max_waste)),
+                step=max(0.1, max_waste / 100),  # Dynamic step size
+                key="waste_range"
+            )
 
-        item_limit = st.selectbox(
-            "Number of items to display",
-            options=[10, 20, 30, 50, "All"],
-            index=0,
-            key="item_limit"
-        )
+            item_limit = st.selectbox(
+                "Number of items to display",
+                options=[10, 20, 30, 50, "All"],
+                index=0,
+                key="item_limit"
+            )
+        except Exception as e:
+            st.error(f"Filter setup error: {str(e)}")
+            st.stop()
 
-    # Filter data
-    item_stats = item_stats[
-        (item_stats['Served_Total'] >= served_range[0]) &
-        (item_stats['Served_Total'] <= served_range[1]) &
-        (item_stats['Total_Waste_Cost'] >= waste_range[0]) &
-        (item_stats['Total_Waste_Cost'] <= waste_range[1])
-        ]
+    # Filter data with validation
+    try:
+        filtered_items = item_stats[
+            (item_stats['Served_Total'] >= served_range[0]) &
+            (item_stats['Served_Total'] <= served_range[1]) &
+            (item_stats['Total_Waste_Cost'] >= waste_range[0]) &
+            (item_stats['Total_Waste_Cost'] <= waste_range[1])
+            ]
 
-    if item_stats.empty:
-        st.warning("No menu items match the selected ranges.")
+        if filtered_items.empty:
+            st.warning("No menu items match the selected ranges.")
+            st.stop()
+
+        # Limit items if needed
+        if item_limit != "All":
+            filtered_items = filtered_items.nlargest(int(item_limit), 'Total_Waste_Cost')
+
+    except Exception as e:
+        st.error(f"Data filtering error: {str(e)}")
         st.stop()
-
-    # Limit items if needed
-    if item_limit != "All":
-        item_stats = item_stats.sort_values('Total_Waste_Cost', ascending=False).head(int(item_limit))
 
     # Summary stats
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Items Displayed", item_stats['Name'].nunique())
+        st.metric("Items Displayed", filtered_items['Name'].nunique())
     with col2:
-        st.metric("Total Servings", f"{item_stats['Served_Total'].sum():,}")
+        st.metric("Total Servings", f"{filtered_items['Served_Total'].sum():,}")
     with col3:
-        st.metric("Total Waste Cost", f"${item_stats['Total_Waste_Cost'].sum():,.2f}")
+        st.metric("Total Waste Cost", f"${filtered_items['Total_Waste_Cost'].sum():,.2f}")
 
-    # Plot
-    fig = px.scatter(
-        item_stats,
-        x='Served_Total',
-        y='Total_Waste_Cost',
-        size='Total_Waste_Cost',
-        hover_name='Name',
-        title='Popularity vs. Waste by Menu Item',
-        color='Total_Waste_Cost',
-        color_continuous_scale='Viridis'
-    )
-    fig.update_layout(
-        height=600,
-        width=1200,
-        xaxis_title="Total Servings",
-        yaxis_title="Total Waste Cost ($)",
-        coloraxis_showscale=False
-    )
+    # Plot with error handling
+    try:
+        fig = px.scatter(
+            filtered_items,
+            x='Served_Total',
+            y='Total_Waste_Cost',
+            size='Total_Waste_Cost',
+            hover_name='Name',
+            title='Popularity vs. Waste by Menu Item',
+            color='Total_Waste_Cost',
+            color_continuous_scale='Viridis'
+        )
+        fig.update_layout(
+            height=600,
+            width=1200,
+            xaxis_title="Total Servings",
+            yaxis_title="Total Waste Cost ($)",
+            coloraxis_showscale=False
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Visualization error: {str(e)}")
+        st.stop()
 
     with st.expander("ℹ️ About this visualization"):
         st.markdown("""
