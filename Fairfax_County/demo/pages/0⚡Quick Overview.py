@@ -3,7 +3,8 @@ from pathlib import Path
 
 
 def img(filename):
-    return str(Path(__file__).parent.parent.parent / "images" / filename)
+    # Go up 1 level: pages -> demo, then into images/
+    return str(Path(__file__).parent.parent / "images" / filename)
 
 
 # Set page config
