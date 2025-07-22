@@ -1330,101 +1330,155 @@ elif selected_viz == "Cost per Student by Region":
 # ---------------------------------------------------------------------------------------------------------
 
 elif selected_viz == "Geographic Distribution of Costs and Waste":
-    # st.header("🗺️ Geographic Distribution of Costs and Waste")
+    try:
+        # Apply global filters with validation
+        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
 
-    # Apply global filters
-    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
+        # Check for required columns
+        required_columns = {'latitude', 'longitude', 'School Name', 'Production_Cost_Total', 'Total_Waste_Cost'}
+        missing_cols = required_columns - set(filtered_df.columns)
+        if missing_cols:
+            st.warning(f"Missing required columns: {', '.join(missing_cols)}")
+            st.stop()
 
-    required_columns = {'latitude', 'longitude', 'School Name', 'Production_Cost_Total', 'Total_Waste_Cost'}
-    if not required_columns.issubset(filtered_df.columns):
-        st.warning("Required columns (latitude, longitude, costs) not found in data.")
+        if filtered_df.empty:
+            st.warning("No records found for the selected filters.")
+            st.stop()
+
+        # Validate coordinate data
+        if filtered_df['latitude'].isna().any() or filtered_df['longitude'].isna().any():
+            st.warning("Some locations are missing coordinates. These records will be excluded.")
+            filtered_df = filtered_df.dropna(subset=['latitude', 'longitude'])
+            if filtered_df.empty:
+                st.warning("No records with valid coordinates remain.")
+                st.stop()
+
+        # Group and aggregate with validation
+        school_geo = filtered_df.groupby(['School Name', 'latitude', 'longitude']).agg({
+            'Production_Cost_Total': 'sum',
+            'Total_Waste_Cost': 'sum'
+        }).reset_index()
+
+        # Add your specific validation check
+        if school_geo['Total_Waste_Cost'].sum() == 0 or school_geo['Production_Cost_Total'].sum() == 0:
+            st.warning("No valid cost or waste data found for the selected filters. Please adjust your selections.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Data processing error: {str(e)}")
         st.stop()
 
-    if filtered_df.empty:
-        st.warning("No records found for the selected filters.")
+    # Slider configuration with safeguards
+    try:
+        if selected_school != "All Schools":
+            # Single school mode - no sliders needed
+            cost_range = (
+                int(school_geo['Production_Cost_Total'].min()),
+                int(school_geo['Production_Cost_Total'].max())
+            )
+            waste_range = (
+                int(school_geo['Total_Waste_Cost'].min()),
+                int(school_geo['Total_Waste_Cost'].max())
+            )
+        else:
+            # Multi-school mode with sliders
+            with st.sidebar:
+                st.subheader("Map Filters")
+
+                # Calculate safe ranges
+                cost_min, cost_max = 0, max(1, int(school_geo['Production_Cost_Total'].max()))
+                waste_min, waste_max = 0, max(1, int(school_geo['Total_Waste_Cost'].max()))
+
+                cost_range = st.slider(
+                    "Production Cost Range ($)",
+                    min_value=cost_min,
+                    max_value=cost_max,
+                    value=(cost_min, cost_max),
+                    step=max(100, cost_max // 100),
+                    key="geo_cost_range"
+                )
+
+                waste_range = st.slider(
+                    "Waste Cost Range ($)",
+                    min_value=waste_min,
+                    max_value=waste_max,
+                    value=(waste_min, waste_max),
+                    step=max(50, waste_max // 100),
+                    key="geo_waste_range"
+                )
+
+            # Apply filters
+            school_geo = school_geo[
+                (school_geo['Production_Cost_Total'] >= cost_range[0]) &
+                (school_geo['Production_Cost_Total'] <= cost_range[1]) &
+                (school_geo['Total_Waste_Cost'] >= waste_range[0]) &
+                (school_geo['Total_Waste_Cost'] <= waste_range[1])
+                ]
+
+            if school_geo.empty:
+                st.warning("No schools match the selected cost/waste ranges.")
+                st.stop()
+
+    except Exception as e:
+        st.error(f"Filter configuration error: {str(e)}")
         st.stop()
 
-    # Group and aggregate by school and location
-    school_geo = filtered_df.groupby(['School Name', 'latitude', 'longitude']).agg({
-        'Production_Cost_Total': 'sum',
-        'Total_Waste_Cost': 'sum'
-    }).reset_index()
+    # Summary metrics with validation
+    try:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Schools Displayed", school_geo['School Name'].nunique())
+        with col2:
+            total_cost = school_geo['Production_Cost_Total'].sum()
+            st.metric("Total Cost", f"${total_cost:,.2f}")
+        with col3:
+            total_waste = school_geo['Total_Waste_Cost'].sum()
+            st.metric("Total Waste", f"${total_waste:,.2f}")
 
-    # Add sliders for filtering
-    # If only one school is selected, skip sliders entirely
-    if selected_school != "All Schools":
-        school_geo = school_geo[school_geo['School Name'] == selected_school]
-        cost_range = (
-            int(school_geo['Production_Cost_Total'].min()),
-            int(school_geo['Production_Cost_Total'].max())
+        # Final validation before plotting
+        if total_cost == 0 and total_waste == 0:
+            st.warning("No valid cost or waste data to display after filtering.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Metric calculation error: {str(e)}")
+        st.stop()
+
+    # Map visualization with error handling
+    try:
+        fig = px.scatter_map(
+            school_geo,
+            lat='latitude',
+            lon='longitude',
+            size='Production_Cost_Total',
+            color='Total_Waste_Cost',
+            hover_name='School Name',
+            hover_data={
+                'Production_Cost_Total': ':.2f',
+                'Total_Waste_Cost': ':.2f',
+                'latitude': False,
+                'longitude': False
+            },
+            color_continuous_scale='Blues',
+            zoom=10,
+            size_max=20
         )
-        waste_range = (
-            int(school_geo['Total_Waste_Cost'].min()),
-            int(school_geo['Total_Waste_Cost'].max())
+
+        fig.update_layout(
+            mapbox_style="open-street-map",
+            margin={"r": 10, "t": 50, "l": 10, "b": 10},
+            height=650,
+            coloraxis_colorbar=dict(
+                title="Waste Cost ($)",
+                tickprefix="$"
+            )
         )
-    else:
-        with st.sidebar:
-            st.subheader("Map Filters")
 
-            cost_range = st.slider(
-                "Production Cost Range ($)",
-                min_value=0,
-                max_value=int(school_geo['Production_Cost_Total'].max()),
-                value=(0, int(school_geo['Production_Cost_Total'].max())),
-                step=100
-            )
+        st.plotly_chart(fig, use_container_width=True)
 
-            waste_range = st.slider(
-                "Waste Cost Range ($)",
-                min_value=0,
-                max_value=int(school_geo['Total_Waste_Cost'].max()),
-                value=(0, int(school_geo['Total_Waste_Cost'].max())),
-                step=50
-            )
-
-        # Apply slider filtering only in "All Schools" mode
-        school_geo = school_geo[
-            (school_geo['Production_Cost_Total'] >= cost_range[0]) &
-            (school_geo['Production_Cost_Total'] <= cost_range[1]) &
-            (school_geo['Total_Waste_Cost'] >= waste_range[0]) &
-            (school_geo['Total_Waste_Cost'] <= waste_range[1])
-            ]
-
-    # Summary metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Schools Displayed", school_geo['School Name'].nunique())
-    with col2:
-        st.metric("Total Cost", f"${school_geo['Production_Cost_Total'].sum():,.2f}")
-    with col3:
-        st.metric("Total Waste", f"${school_geo['Total_Waste_Cost'].sum():,.2f}")
-
-    # Create map
-    fig = px.scatter_map(
-        school_geo,
-        lat='latitude',
-        lon='longitude',
-        size='Production_Cost_Total',
-        color='Total_Waste_Cost',
-        hover_name='School Name',
-        hover_data={
-            'Production_Cost_Total': True,
-            'Total_Waste_Cost': True,
-            'latitude': False,
-            'longitude': False
-        },
-        color_continuous_scale='Blues',
-        zoom=10,
-        # title='School Breakfast Program: Geographic Distribution of Costs and Waste'
-    )
-
-    fig.update_layout(
-        mapbox_style="open-street-map",
-        margin={"r": 10, "t": 50, "l": 10, "b": 10},
-        height=650
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Map rendering error: {str(e)}")
+        st.stop()
 
     st.text(" ")
     st.text(" ")
