@@ -697,6 +697,12 @@ elif selected_viz == "Top Wasted Menu Items":
         if grouped.empty:
             st.warning("No waste data available after grouping.")
             st.stop()
+        waste_sum = grouped.groupby('Name')['Total_Waste_Cost'].sum()
+
+        if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()) or waste_sum.max() == 0:
+            st.warning(
+                "No valid waste cost data found for the selected menu items or school. Please choose different of more items.")
+            st.stop()
 
         # Now calculate max values safely
         item_waste_max = float(grouped['Total_Waste_Cost'].max())
