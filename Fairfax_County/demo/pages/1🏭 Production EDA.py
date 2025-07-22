@@ -1481,7 +1481,7 @@ elif selected_viz == "Geographic Distribution of Costs and Waste":
         st.stop()
 
     st.text(" ")
-    st.text(" ")
+    st.text("  ")
 
     with st.expander("ℹ️ About this visualization"):
         st.markdown("""
