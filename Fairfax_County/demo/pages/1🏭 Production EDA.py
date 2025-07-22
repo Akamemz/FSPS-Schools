@@ -688,47 +688,34 @@ elif selected_viz == "Top Wasted Menu Items":
 
         # Primary data validation
         if filtered_df.empty:
-            st.warning("No records found for the selected school, date range, and menu items.")
+            st.warning("No records found for the selected filters.")
             st.stop()
 
-        # Validate we have waste cost data
-        waste_sum = filtered_df.groupby('Name')['Total_Waste_Cost'].sum()
+        # First create grouped data safely
+        grouped = filtered_df.groupby(['Name', 'Meal'], observed=True)['Total_Waste_Cost'].sum().reset_index()
 
-        if waste_sum.empty or waste_sum.isna().all() or (waste_sum == 0).all():
-            st.warning("""
-            No valid waste cost data found for:
-            - Selected menu items: {}
-            - Selected school: {}
-            - Date range: {} to {}
-            """.format(
-                menu_items if menu_items else "All items",
-                selected_school,
-                date_range[0] if len(date_range) == 2 else "All dates",
-                date_range[1] if len(date_range) == 2 else "All dates"
-            ))
+        if grouped.empty:
+            st.warning("No waste data available after grouping.")
             st.stop()
+
+        # Now calculate max values safely
+        item_waste_max = float(grouped['Total_Waste_Cost'].max())
+        available_items = grouped['Name'].nunique()
 
     except Exception as e:
-        st.error(f"Error processing data: {str(e)}")
+        st.error(f"Data processing error: {str(e)}")
         st.stop()
 
     with st.sidebar:
         st.subheader("Display Options")
 
-        # Calculate safe display limits
         try:
-            item_waste_max = float(waste_sum.max())
-            available_items = filtered_df['Name'].nunique()
-
-            # Ensure we don't try to show more items than exist
-            default_num_items = min(10, available_items) if available_items > 0 else 1
-
             item_waste_range = st.slider(
                 "Filter by Total Waste Cost ($)",
                 min_value=0.0,
                 max_value=item_waste_max,
                 value=(0.0, item_waste_max),
-                step=max(1.0, item_waste_max / 100),  # Dynamic step size
+                step=50.0,
                 key="item_waste_cost_range"
             )
 
@@ -736,53 +723,57 @@ elif selected_viz == "Top Wasted Menu Items":
                 "Number of menu items to display",
                 min_value=1,
                 max_value=available_items,
-                value=default_num_items,
+                value=min(10, available_items),
                 step=1,
                 key="waste_item_count_slider"
             )
         except Exception as e:
-            st.error(f"Error setting display options: {str(e)}")
+            st.error(f"Filter setup error: {str(e)}")
             st.stop()
 
-    # Secondary filtering based on slider values
+    # Apply filters to grouped data
     try:
-        item_stats = filtered_df.groupby(['Name', 'Meal']).agg({
-            'Served_Total': 'sum',
-            'Total_Waste_Cost': 'sum'
-        }).reset_index()
-
-        # Apply waste cost filter from slider
-        item_stats = item_stats[
-            (item_stats['Total_Waste_Cost'] >= item_waste_range[0]) &
-            (item_stats['Total_Waste_Cost'] <= item_waste_range[1])
+        filtered_grouped = grouped[
+            (grouped['Total_Waste_Cost'] >= item_waste_range[0]) &
+            (grouped['Total_Waste_Cost'] <= item_waste_range[1])
             ]
 
-        if item_stats.empty:
+        if filtered_grouped.empty:
             st.warning("No items match the selected waste cost range.")
             st.stop()
 
-        # Limit number of items
-        top_items = item_stats.nlargest(num_items, 'Total_Waste_Cost')['Name'].unique()
-        item_stats = item_stats[item_stats['Name'].isin(top_items)]
+        # Get top items
+        top_items = (
+            filtered_grouped.groupby('Name')['Total_Waste_Cost']
+            .sum()
+            .sort_values(ascending=False)
+            .head(num_items if num_items != "All" else None)
+            .index
+        )
+
+        display_data = filtered_grouped[filtered_grouped['Name'].isin(top_items)]
+
+        if display_data.empty:
+            st.warning("No items to display after filtering.")
+            st.stop()
 
     except Exception as e:
-        st.error(f"Error filtering items: {str(e)}")
+        st.error(f"Data filtering error: {str(e)}")
         st.stop()
 
-    # Visualization code continues...
-
+    # Visualization code using display_data
     # Summary Metrics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Displayed Items", grouped['Name'].nunique())
+        st.metric("Displayed Items", display_data['Name'].nunique())
     with col2:
-        st.metric("Total Waste Cost (Shown)", f"${grouped['Total_Waste_Cost'].sum():,.2f}")
+        st.metric("Total Waste Cost (Shown)", f"${display_data['Total_Waste_Cost'].sum():,.2f}")
     with col3:
-        st.metric("Meals Compared", grouped['Meal'].nunique())
+        st.metric("Meals Compared", display_data['Meal'].nunique())
 
     # Bar chart
     fig = px.bar(
-        grouped,
+        display_data,
         x='Name',
         y='Total_Waste_Cost',
         color='Meal',
