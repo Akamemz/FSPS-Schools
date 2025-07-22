@@ -552,7 +552,7 @@ elif selected_viz == "Top Schools by Food Waste Cost":
 
     # Validate waste_sum BEFORE calling slider
     if waste_sum.empty or waste_sum.max() is None or pd.isna(waste_sum.max()) or waste_sum.max() == 0:
-        st.warning("No valid waste cost data found for the selected menu items or school. Please choose more items.")
+        st.warning("No valid waste cost data found for the selected menu items or school. Please choose different of more items.")
         st.stop()
 
     waste_max = float(waste_sum.max())
