@@ -1501,165 +1501,222 @@ elif selected_viz == "Geographic Distribution of Costs and Waste":
 # ---------------------------------------------------------------------------------------------------------
 
 elif selected_viz == "Interactive School Map with Layers":
-    # st.header("🗺️ Interactive School Map with Layers")
+    try:
+        # Apply global filters with validation
+        filtered_df = apply_filters(df, selected_school, date_range, menu_items)
 
-    # Apply global filters
-    filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
+        # Check for required columns
+        if 'latitude' not in filtered_df.columns or 'longitude' not in filtered_df.columns:
+            st.warning("Latitude/Longitude columns not found in data.")
+            st.stop()
 
-    if 'latitude' not in filtered_df.columns or 'longitude' not in filtered_df.columns:
-        st.warning("Latitude/Longitude columns not found in data.")
-        st.stop()
+        # Validate coordinate data
+        if filtered_df['latitude'].isna().any() or filtered_df['longitude'].isna().any():
+            st.warning("Some locations are missing coordinates. These records will be excluded.")
+            filtered_df = filtered_df.dropna(subset=['latitude', 'longitude'])
+            if filtered_df.empty:
+                st.warning("No records with valid coordinates remain.")
+                st.stop()
 
-    # Aggregate school data
-    school_geo = filtered_df.groupby(['School Name', 'latitude', 'longitude']).agg({
-        'Production_Cost_Total': 'sum',
-        'Total_Waste_Cost': 'sum'
-    }).reset_index()
+        # Aggregate school data with validation
+        school_geo = filtered_df.groupby(['School Name', 'latitude', 'longitude']).agg({
+            'Production_Cost_Total': 'sum',
+            'Total_Waste_Cost': 'sum'
+        }).reset_index()
 
-    if school_geo.empty:
-        st.warning("No schools match the selected filters.")
+        # Add your specific validation check
+        if school_geo['Total_Waste_Cost'].sum() == 0 or school_geo['Production_Cost_Total'].sum() == 0:
+            st.warning("No valid cost or waste data found for the selected filters. Please adjust your selections.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Data processing error: {str(e)}")
         st.stop()
 
     # Determine if we're in single-school mode
     is_single_school = selected_school != "All Schools"
 
     # ---------------- Sidebar controls ----------------
-    if is_single_school:
-        # Don't apply sliders — just let the selected school pass through
-        cost_range = (
-            float(school_geo['Production_Cost_Total'].min()),
-            float(school_geo['Production_Cost_Total'].max())
-        )
-        waste_range = (
-            float(school_geo['Total_Waste_Cost'].min()),
-            float(school_geo['Total_Waste_Cost'].max())
-        )
-        layer_option = "Show Both"
-        top_n = "All"
-    else:
-        with st.sidebar:
-            st.subheader("Map Display Filters")
-
-            layer_option = st.radio(
-                "Layer View",
-                options=["Show Costs", "Show Waste", "Show Both"],
-                index=2,
-                horizontal=False,
-                key="layer_selector"
+    try:
+        if is_single_school:
+            # Single school mode - no sliders needed
+            cost_range = (
+                float(school_geo['Production_Cost_Total'].min()),
+                float(school_geo['Production_Cost_Total'].max())
             )
-
-            cost_range = st.slider(
-                "Production Cost Range ($)",
-                min_value=0,
-                max_value=int(school_geo['Production_Cost_Total'].max()),
-                value=(0, int(school_geo['Production_Cost_Total'].max())),
-                step=100,
-                key="map_cost_range"
+            waste_range = (
+                float(school_geo['Total_Waste_Cost'].min()),
+                float(school_geo['Total_Waste_Cost'].max())
             )
+            layer_option = "Show Both"
+            top_n = "All"
+        else:
+            # Multi-school mode with sliders
+            with st.sidebar:
+                st.subheader("Map Display Filters")
 
-            waste_range = st.slider(
-                "Waste Cost Range ($)",
-                min_value=0,
-                max_value=int(school_geo['Total_Waste_Cost'].max()),
-                value=(0, int(school_geo['Total_Waste_Cost'].max())),
-                step=50,
-                key="map_waste_range"
-            )
+                layer_option = st.radio(
+                    "Layer View",
+                    options=["Show Costs", "Show Waste", "Show Both"],
+                    index=2,
+                    horizontal=False,
+                    key="layer_selector"
+                )
 
-            top_n = st.selectbox(
-                "Number of Schools to Display",
-                options=[10, 20, 30, 50, 100, "All"],
-                index=2,
-                key="map_school_count"
-            )
+                # Calculate safe ranges
+                cost_max = max(1, int(school_geo['Production_Cost_Total'].max()))
+                waste_max = max(1, int(school_geo['Total_Waste_Cost'].max()))
 
-        # Only apply slider filters in multi-school mode
-        school_geo = school_geo[
-            (school_geo['Production_Cost_Total'] >= cost_range[0]) &
-            (school_geo['Production_Cost_Total'] <= cost_range[1]) &
-            (school_geo['Total_Waste_Cost'] >= waste_range[0]) &
-            (school_geo['Total_Waste_Cost'] <= waste_range[1])
-            ]
+                cost_range = st.slider(
+                    "Production Cost Range ($)",
+                    min_value=0,
+                    max_value=cost_max,
+                    value=(0, cost_max),
+                    step=max(100, cost_max // 100),
+                    key="map_cost_range"
+                )
 
-        if top_n != "All":
-            school_geo = school_geo.sort_values("Production_Cost_Total", ascending=False).head(int(top_n))
+                waste_range = st.slider(
+                    "Waste Cost Range ($)",
+                    min_value=0,
+                    max_value=waste_max,
+                    value=(0, waste_max),
+                    step=max(50, waste_max // 100),
+                    key="map_waste_range"
+                )
 
-    if top_n != "All" and not is_single_school:
-        school_geo = school_geo.sort_values("Production_Cost_Total", ascending=False).head(int(top_n))
+                top_n = st.selectbox(
+                    "Number of Schools to Display",
+                    options=[10, 20, 30, 50, 100, "All"],
+                    index=2,
+                    key="map_school_count"
+                )
 
-    if school_geo.empty:
-        st.warning("No schools match the selected filter values.")
+            # Apply filters
+            school_geo = school_geo[
+                (school_geo['Production_Cost_Total'] >= cost_range[0]) &
+                (school_geo['Production_Cost_Total'] <= cost_range[1]) &
+                (school_geo['Total_Waste_Cost'] >= waste_range[0]) &
+                (school_geo['Total_Waste_Cost'] <= waste_range[1])
+                ]
+
+            if top_n != "All":
+                school_geo = school_geo.nlargest(int(top_n), 'Production_Cost_Total')
+
+            if school_geo.empty:
+                st.warning("No schools match the selected filter values.")
+                st.stop()
+
+    except Exception as e:
+        st.error(f"Filter configuration error: {str(e)}")
         st.stop()
 
     # ---------------- Summary ----------------
-    all_menu_items = df['Name'].dropna().unique()
-    num_selected_menu_items = len(menu_items) if menu_items else len(all_menu_items)
+    try:
+        all_menu_items = df['Name'].dropna().unique()
+        num_selected_menu_items = len(menu_items) if menu_items else len(all_menu_items)
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Schools Displayed", school_geo['School Name'].nunique())
-    with col2:
-        st.metric("Total Cost", f"${school_geo['Production_Cost_Total'].sum():,.2f}")
-    with col3:
-        st.metric("Total Waste", f"${school_geo['Total_Waste_Cost'].sum():,.2f}")
-    with col4:
-        st.metric("Menu Items Selected", f"{num_selected_menu_items} / {len(all_menu_items)}")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Schools Displayed", school_geo['School Name'].nunique())
+        with col2:
+            total_cost = school_geo['Production_Cost_Total'].sum()
+            st.metric("Total Cost", f"${total_cost:,.2f}")
+        with col3:
+            total_waste = school_geo['Total_Waste_Cost'].sum()
+            st.metric("Total Waste", f"${total_waste:,.2f}")
+        with col4:
+            st.metric("Menu Items Selected", f"{num_selected_menu_items} / {len(all_menu_items)}")
+
+        # Final validation before plotting
+        if total_cost == 0 and total_waste == 0:
+            st.warning("No valid cost or waste data to display after filtering.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Metric calculation error: {str(e)}")
+        st.stop()
 
     # ---------------- Map Layers ----------------
-    fig = go.Figure()
+    try:
+        fig = go.Figure()
 
-    if layer_option in ["Show Costs", "Show Both"]:
-        fig.add_trace(go.Scattermap(
-            lon=school_geo['longitude'],
-            lat=school_geo['latitude'],
-            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Cost: ${row['Production_Cost_Total']:,.2f}",
-                                  axis=1),
-            marker=dict(
-                size=school_geo['Production_Cost_Total'] / 100,
-                color=school_geo['Production_Cost_Total'],
-                colorscale='Viridis',
-                colorbar_title="Cost ($)",
-                sizemode='area',
-                sizemin=5
-            ),
-            name='Production Costs'
-        ))
+        # Calculate dynamic sizing
+        cost_sizes = school_geo['Production_Cost_Total'] / school_geo['Production_Cost_Total'].max()
+        cost_sizes = cost_sizes.fillna(0) * 25 + 5  # Normalize to 5–30 px
+        waste_sizes = school_geo['Total_Waste_Cost'] / school_geo['Total_Waste_Cost'].max()
+        waste_sizes = waste_sizes.fillna(0) * 25 + 5
 
-    if layer_option in ["Show Waste", "Show Both"]:
-        fig.add_trace(go.Scattermap(
-            lon=school_geo['longitude'],
-            lat=school_geo['latitude'],
-            text=school_geo.apply(lambda row: f"{row['School Name']}<br>Waste: ${row['Total_Waste_Cost']:,.2f}",
-                                  axis=1),
-            marker=dict(
-                size=school_geo['Total_Waste_Cost'] / 50,
-                color=school_geo['Total_Waste_Cost'],
-                colorscale='Blues',
-                colorbar_title="Waste ($)",
-                sizemode='area',
-                sizemin=5
-            ),
-            name='Food Waste'
-        ))
+        # Cost layer (base)
+        if layer_option in ["Show Costs", "Show Both"]:
+            fig.add_trace(go.Scattermap(
+                lon=school_geo['longitude'],
+                lat=school_geo['latitude'],
+                text=school_geo.apply(
+                    lambda
+                        row: f"{row['School Name']}<br><b>Cost:</b> ${row['Production_Cost_Total']:,.2f}<br><b>Waste:</b> ${row['Total_Waste_Cost']:,.2f}",
+                    axis=1
+                ),
+                marker=dict(
+                    size=cost_sizes,
+                    color=school_geo['Production_Cost_Total'],
+                    colorscale='YlOrBr',
+                    cmin=0,
+                    cmax=school_geo['Production_Cost_Total'].max(),
+                    colorbar=dict(title="Production Cost ($)", thickness=20),
+                    opacity=0.6,
+                    sizemode='diameter',
+                ),
+                name='Production Costs',
+                hoverinfo='text',
+                visible=True if layer_option != "Show Waste" else False
+            ))
 
-    # ---------------- Layout ----------------
-    fig.update_layout(
-        geo=dict(
-            scope='usa',
-            projection_type='equirectangular',
-            showland=True,
-            landcolor="rgb(243, 243, 243)",
-            subunitwidth=1,
-            countrywidth=1,
-            center=dict(lat=school_geo['latitude'].mean(), lon=school_geo['longitude'].mean()),
-            lataxis_range=[school_geo['latitude'].min() - 0.1, school_geo['latitude'].max() + 0.1],
-            lonaxis_range=[school_geo['longitude'].min() - 0.1, school_geo['longitude'].max() + 0.1],
-        ),
-        height=650,
-        margin={"r": 10, "t": 50, "l": 10, "b": 10}
-    )
+        # Waste layer (overlay)
+        if layer_option in ["Show Waste", "Show Both"]:
+            fig.add_trace(go.Scattermap(
+                lon=school_geo['longitude'],
+                lat=school_geo['latitude'],
+                text=school_geo.apply(
+                    lambda
+                        row: f"{row['School Name']}<br><b>Cost:</b> ${row['Production_Cost_Total']:,.2f}<br><b>Waste:</b> ${row['Total_Waste_Cost']:,.2f}",
+                    axis=1
+                ),
+                marker=dict(
+                    size=waste_sizes,
+                    color=school_geo['Total_Waste_Cost'],
+                    colorscale='PuBuGn',
+                    cmin=0,
+                    cmax=school_geo['Total_Waste_Cost'].max(),
+                    colorbar=dict(title="Waste Cost ($)", thickness=20),
+                    opacity=0.5,
+                    sizemode='diameter',
+                    symbol='circle'
+                ),
+                name='Food Waste',
+                hoverinfo='text',
+                visible=True if layer_option != "Show Costs" else False
+            ))
 
-    st.plotly_chart(fig, use_container_width=True)
+        # Map Layout
+        fig.update_layout(
+            mapbox_style="open-street-map",
+            mapbox_zoom=10,
+            mapbox_center={
+                "lat": school_geo['latitude'].mean(),
+                "lon": school_geo['longitude'].mean()
+            },
+            margin={"r": 10, "t": 40, "l": 10, "b": 10},
+            height=650,
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+            showlegend=True
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Map rendering error: {str(e)}")
+        st.stop()
 
     st.text(" ")
     st.text(" ")
