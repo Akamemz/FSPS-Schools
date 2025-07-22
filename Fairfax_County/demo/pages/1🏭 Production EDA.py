@@ -1196,8 +1196,6 @@ elif selected_viz == "Average Food Waste by Day of Week":
 # ---------------------------------------------------------------------------------------------------------
 
 elif selected_viz == "Cost per Student by Region":
-    # st.header("🏫 Cost per Student by Region")
-
     # Sidebar toggle for comparison
     compare_option = st.sidebar.radio(
         "Meal View",
@@ -1207,78 +1205,112 @@ elif selected_viz == "Cost per Student by Region":
     )
     compare_meals = (compare_option == "Compare Breakfast vs. Lunch")
 
-    # Load and filter data
-    if compare_meals:
-        df_breakfast = load_data("Breakfast 🍳")
-        df_lunch = load_data("Lunch 🥪")
-        df_breakfast["Meal"] = "Breakfast"
-        df_lunch["Meal"] = "Lunch"
-        combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
-        filtered_df = safe_filtered_df(combined_df, selected_school, date_range, menu_items)
-    else:
-        filtered_df = safe_filtered_df(df, selected_school, date_range, menu_items)
-        filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
+    # Load and filter data with safeguards
+    try:
+        if compare_meals:
+            df_breakfast = load_data("Breakfast 🍳")
+            df_lunch = load_data("Lunch 🥪")
+            df_breakfast["Meal"] = "Breakfast"
+            df_lunch["Meal"] = "Lunch"
+            combined_df = pd.concat([df_breakfast, df_lunch], ignore_index=True)
+            filtered_df = apply_filters(combined_df, selected_school, date_range, menu_items)
+        else:
+            filtered_df = apply_filters(df, selected_school, date_range, menu_items)
+            filtered_df["Meal"] = meal_type.split()[0]  # 'Breakfast' or 'Lunch'
 
-    if "FCPS Region" not in filtered_df.columns:
-        st.warning("⚠️ 'FCPS Region' column not found in data.")
+        # Primary data validation
+        if filtered_df.empty:
+            st.warning("No records found for the selected filters.")
+            st.stop()
+
+        if "FCPS Region" not in filtered_df.columns:
+            st.warning("⚠️ 'FCPS Region' column not found in data.")
+            st.stop()
+
+        # Calculate cost per student with zero-division protection
+        region_cost = (
+            filtered_df.groupby(["FCPS Region", "Meal"])
+            .agg({"Production_Cost_Total": "sum", "Served_Total": "sum"})
+            .reset_index()
+        )
+        region_cost["Cost_Per_Student"] = np.where(
+            region_cost["Served_Total"] > 0,
+            region_cost["Production_Cost_Total"] / region_cost["Served_Total"],
+            0  # Handle zero servings case
+        )
+
+        # Add validation check for meaningful data
+        if (region_cost["Cost_Per_Student"] == 0).all():
+            st.warning("No valid cost-per-student data found. Please check your filters.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Data processing error: {str(e)}")
         st.stop()
 
-    if filtered_df.empty:
-        st.warning("No records found for the selected filters.")
+    # Summary metrics with additional validation
+    try:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Regions Displayed", region_cost['FCPS Region'].nunique())
+        with col2:
+            avg_cost = region_cost['Cost_Per_Student'].replace([np.inf, -np.inf], np.nan).mean()
+            st.metric("Avg Cost/Student", f"${avg_cost:,.2f}")
+
+        # Find min/max with error handling
+        valid_costs = region_cost.replace([np.inf, -np.inf], np.nan).dropna(subset=['Cost_Per_Student'])
+        if not valid_costs.empty:
+            max_row = valid_costs.loc[valid_costs['Cost_Per_Student'].idxmax()]
+            min_row = valid_costs.loc[valid_costs['Cost_Per_Student'].idxmin()]
+
+            col3, col4 = st.columns(2)
+            with col3:
+                st.metric("Highest Region",
+                          f"{max_row['FCPS Region']} ({max_row['Meal']})",
+                          delta=f"${max_row['Cost_Per_Student']:,.2f}")
+            with col4:
+                st.metric("Lowest Region",
+                          f"{min_row['FCPS Region']} ({min_row['Meal']})",
+                          delta=f"${min_row['Cost_Per_Student']:,.2f}")
+        else:
+            st.warning("No valid cost-per-student values to display.")
+            st.stop()
+
+    except Exception as e:
+        st.error(f"Metric calculation error: {str(e)}")
         st.stop()
 
-    # Group and calculate cost per student
-    region_cost = (
-        filtered_df.groupby(["FCPS Region", "Meal"])
-        .agg({"Production_Cost_Total": "sum", "Served_Total": "sum"})
-        .reset_index()
-    )
-    region_cost["Cost_Per_Student"] = region_cost["Production_Cost_Total"] / region_cost["Served_Total"]
+    # Plot with error handling
+    try:
+        fig = px.bar(
+            region_cost,
+            x="FCPS Region",
+            y="Cost_Per_Student",
+            color="Meal",
+            barmode="group",
+            labels={
+                "Cost_Per_Student": "Cost per Student ($)",
+                "FCPS Region": "Region",
+                "Meal": "Meal"
+            },
+            color_discrete_map={"Breakfast": "#1f77b4", "Lunch": "#17becf"},
+            title="Cost per Student by Region"
+        )
 
-    # Summary metrics
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Regions Displayed", region_cost['FCPS Region'].nunique())
-    with col2:
-        avg_cost = region_cost['Cost_Per_Student'].mean()
-        st.metric("Avg Cost/Student", f"${avg_cost:,.2f}")
+        fig.update_layout(
+            height=600,
+            width=1100,
+            xaxis_title="Region",
+            yaxis_title="Cost per Student ($)",
+            xaxis_tickangle=0,
+            coloraxis_showscale=False
+        )
 
-    col3, col4 = st.columns(2)
-    max_row = region_cost.loc[region_cost['Cost_Per_Student'].idxmax()]
-    min_row = region_cost.loc[region_cost['Cost_Per_Student'].idxmin()]
-    with col3:
-        st.metric("Highest Region", f"{max_row['FCPS Region']} ({max_row['Meal']})",
-                  delta=f"${max_row['Cost_Per_Student']:,.2f}")
-    with col4:
-        st.metric("Lowest Region", f"{min_row['FCPS Region']} ({min_row['Meal']})",
-                  delta=f"${min_row['Cost_Per_Student']:,.2f}")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Plot
-    fig = px.bar(
-        region_cost,
-        x="FCPS Region",
-        y="Cost_Per_Student",
-        color="Meal",
-        barmode="group",  # You can change to 'stack' here if needed
-        labels={
-            "Cost_Per_Student": "Cost per Student ($)",
-            "FCPS Region": "Region",
-            "Meal": "Meal"
-        },
-        color_discrete_map={"Breakfast": "#1f77b4", "Lunch": "#17becf"},
-        title="Cost per Student by Region"
-    )
-
-    fig.update_layout(
-        height=600,
-        width=1100,
-        xaxis_title="Region",
-        yaxis_title="Cost per Student ($)",
-        xaxis_tickangle=0,
-        coloraxis_showscale=False
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Visualization error: {str(e)}")
+        st.stop()
 
     with st.expander("ℹ️ About this visualization"):
         st.markdown("""
