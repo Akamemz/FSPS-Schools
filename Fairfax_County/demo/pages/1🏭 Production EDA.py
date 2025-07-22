@@ -691,15 +691,20 @@ elif selected_viz == "Top Wasted Menu Items":
         st.warning("No records found for the selected filters.")
         st.stop()
 
+    # Precompute total waste cost per item
+    item_waste_sum = filtered_df.groupby('Name')['Total_Waste_Cost'].sum()
+
+    # Validate before slider
+    if item_waste_sum.empty or item_waste_sum.max() is None or pd.isna(
+            item_waste_sum.max()) or item_waste_sum.max() == 0:
+        st.warning("No valid waste data found for the selected menu items. Please choose more items.")
+        st.stop()
+
+    item_waste_max = float(item_waste_sum.max())
+
     with st.sidebar:
         st.subheader("Display Options")
 
-        # Max possible items BEFORE grouping
-        max_items = filtered_df['Name'].nunique()
-
-        item_waste_max = float(
-            filtered_df.groupby('Name')['Total_Waste_Cost'].sum().max()
-        )
         item_waste_range = st.slider(
             "Filter by Total Waste Cost ($)",
             min_value=0.0,
@@ -709,6 +714,7 @@ elif selected_viz == "Top Wasted Menu Items":
             key="item_waste_cost_range"
         )
 
+        max_items = filtered_df['Name'].nunique()
         num_items = st.slider(
             "Number of menu items to display",
             min_value=1,
